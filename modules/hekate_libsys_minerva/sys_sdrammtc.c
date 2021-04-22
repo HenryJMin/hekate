@@ -29,8 +29,8 @@
 #define EPRINTFARGS(...)
 
 #define MAX_FREQ_T210     1600000
-//#define OVERCLOCK_FREQ    1862400
-//#define OVERCLOCK_VOLTAGE 1200000 // Default is 1100mV and in HOS 1125mV.
+#define OVERCLOCK_FREQ    1862400
+#define OVERCLOCK_VOLTAGE 1200000 // Default is 1100mV and in HOS 1125mV.
 
 bool emc_2X_clk_src_is_pllmb;
 bool fsp_for_src_freq;
