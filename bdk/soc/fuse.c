@@ -78,23 +78,7 @@ u32 fuse_read_odm_keygen_rev()
 
 u32 fuse_read_dramid(bool raw_id)
 {
-	u32 dramid = (fuse_read_odm(4) & 0xF8) >> 3;
-
-	if (raw_id)
-		return dramid;
-
-	if (hw_get_chip_id() == GP_HIDREV_MAJOR_T210)
-	{
-		if (dramid > 6)
-			dramid = 0;
-	}
-	else
-	{
-		if (dramid > 27)
-			dramid = 8;
-	}
-
-	return dramid;
+	return 4;
 }
 
 u32 fuse_read_hw_state()
