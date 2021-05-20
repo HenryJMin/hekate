@@ -55,12 +55,13 @@ static void _get_valid_partition(u32 *sector_start, u32 *sector_size, u32 *part_
 	*part_idx = 0;
 	int i = 0;
 	u32 curr_part_size = 0;
+	// Find first partition with emuMMC GPP.
 	for (i = 1; i < 4; i++)
 	{
 		curr_part_size = mbr->partitions[i].size_sct;
 		*sector_start = mbr->partitions[i].start_sct;
 		u8 type = mbr->partitions[i].type;
-		u32 sector_size_safe = !backup ? (*sector_size) + 0x8000 : (*sector_size);
+		u32 sector_size_safe = backup ? 0x400000 : (*sector_size) + 0x8000; // 2GB min safe size for backup.
 		if ((curr_part_size >= sector_size_safe) && *sector_start && type != 0x83 && (!backup || type == 0xE0))
 		{
 			if (backup)
@@ -84,6 +85,7 @@ static void _get_valid_partition(u32 *sector_start, u32 *sector_size, u32 *part_
 				break;
 		}
 	}
+	free(mbr);
 
 	if (i < 4)
 		*part_idx = i;
@@ -94,7 +96,7 @@ static void _get_valid_partition(u32 *sector_start, u32 *sector_size, u32 *part_
 		*part_idx = 0;
 	}
 
-	free(mbr);
+	// Get emuMMC GPP size.
 	if (backup && *part_idx && *sector_size)
 	{
 		gpt_t *gpt = (gpt_t *)calloc(sizeof(gpt_t), 1);
@@ -353,6 +355,7 @@ static int _dump_emmc_part(emmc_tool_gui_t *gui, char *sd_path, int active_part,
 	partial_sd_full_unmount = false;
 
 	u32 multipartSplitSize = (1u << 31);
+	u32 lba_end = part->lba_end;
 	u32 totalSectors = part->lba_end - part->lba_start + 1;
 	u32 currPartIdx = 0;
 	u32 numSplitParts = 0;
@@ -384,7 +387,10 @@ static int _dump_emmc_part(emmc_tool_gui_t *gui, char *sd_path, int active_part,
 		}
 		sd_sector_off = sector_start + (0x2000 * active_part);
 		if (active_part == 2)
+		{
 			totalSectors = sector_size;
+			lba_end = sector_size + part->lba_start - 1;
+		}
 	}
 
 	s_printf(gui->txt_buf, "#96FF00 SD Card free space:# %d MiB\n#96FF00 Total backup size:# %d MiB\n\n",
@@ -670,7 +676,7 @@ static int _dump_emmc_part(emmc_tool_gui_t *gui, char *sd_path, int active_part,
 
 		manual_system_maintenance(false);
 
-		pct = (u64)((u64)(lba_curr - part->lba_start) * 100u) / (u64)(part->lba_end - part->lba_start);
+		pct = (u64)((u64)(lba_curr - part->lba_start) * 100u) / (u64)(lba_end - part->lba_start);
 		if (pct != prevPct)
 		{
 			lv_bar_set_value(gui->bar, pct);
@@ -981,13 +987,22 @@ static int _restore_emmc_part(emmc_tool_gui_t *gui, char *sd_path, int active_pa
 				lv_label_ins_text(gui->label_info, LV_LABEL_POS_LAST, gui->txt_buf);
 				manual_system_maintenance(true);
 
-				if (f_stat(outFilename, &fno) && !gui->raw_emummc)
+				if ((u32)((u64)totalCheckFileSize >> (u64)9) > totalSectors)
 				{
-					s_printf(gui->txt_buf, "#FFDD00 Error (%d) file not found#\n#FFDD00 %s.#\n#FFDD00 Aborting...#", res, outFilename);
+					s_printf(gui->txt_buf, "#FF8000 Size of SD Card split backup exceeds#\n#FF8000 eMMC's selected part size!#\n#FFDD00 Aborting...#");
 					lv_label_ins_text(gui->label_log, LV_LABEL_POS_LAST, gui->txt_buf);
 					manual_system_maintenance(true);
 
 					return 0;
+				}
+				else if (f_stat(outFilename, &fno) && !gui->raw_emummc)
+				{
+					s_printf(gui->txt_buf, "#FFDD00 Error (%d) file not found#\n#FFDD00 %s.#\n\n", res, outFilename);
+					lv_label_ins_text(gui->label_log, LV_LABEL_POS_LAST, gui->txt_buf);
+					manual_system_maintenance(true);
+
+					// Attempt a smaller restore.
+					break;
 				}
 				else if (f_stat(outFilename, &fno) && gui->raw_emummc)
 				{
@@ -1020,7 +1035,7 @@ static int _restore_emmc_part(emmc_tool_gui_t *gui, char *sd_path, int active_pa
 			{
 				lv_obj_t *warn_mbox_bg = create_mbox_text(
 					"#FF8000 Size of SD Card split backup does not match,#\n#FF8000 eMMC's selected part size!#\n\n"
-					"#FFDD00 The backup might be corrupted!#\n#FFDD00 Aborting is suggested!#\n\n"
+					"#FFDD00 The backup might be corrupted,#\n#FFDD00 or missing files!#\n#FFDD00 Aborting is suggested!#\n\n"
 					"Press #FF8000 POWER# to Continue.\nPress #FF8000 VOL# to abort.", false);
 				manual_system_maintenance(true);
 
@@ -1078,7 +1093,17 @@ static int _restore_emmc_part(emmc_tool_gui_t *gui, char *sd_path, int active_pa
 	}
 	else if (!use_multipart && (((u32)((u64)f_size(&fp) >> (u64)9)) != totalSectors)) // Check total restore size vs emmc size.
 	{
-		if (!gui->raw_emummc)
+		if (((u32)((u64)f_size(&fp) >> (u64)9)) > totalSectors)
+		{
+			s_printf(gui->txt_buf, "#FF8000 Size of SD Card backup exceeds#\n#FF8000 eMMC's selected part size!#\n#FFDD00 Aborting...#");
+			lv_label_ins_text(gui->label_log, LV_LABEL_POS_LAST, gui->txt_buf);
+			manual_system_maintenance(true);
+
+			f_close(&fp);
+
+			return 0;
+		}
+		else if (!gui->raw_emummc)
 		{
 			lv_obj_t *warn_mbox_bg = create_mbox_text(
 				"#FF8000 Size of the SD Card backup does not match,#\n#FF8000 eMMC's selected part size!#\n\n"
