@@ -454,7 +454,7 @@ void ini_list_launcher()
 				if (cfg_sec)
 				{
 					u32 non_cfg = 1;
-					for (int j = 2; j < i; j++)
+					for (u32 j = 2; j < i; j++)
 					{
 						if (ments[j].type != INI_CHOICE)
 							non_cfg++;
@@ -596,7 +596,7 @@ void launch_firmware()
 			if (cfg_sec)
 			{
 				u8 non_cfg = 4;
-				for (int j = 5; j < i; j++)
+				for (u32 j = 5; j < i; j++)
 				{
 					if (ments[j].type != INI_CHOICE)
 						non_cfg++;
@@ -1361,8 +1361,8 @@ void ipl_reload()
 static void _about()
 {
 	static const char credits[] =
-		"\nhekate     (c) 2018 naehrwert, st4rk\n\n"
-		"CTCaer mod (c) 2018 CTCaer\n"
+		"\nhekate   (c) 2018,      naehrwert, st4rk\n\n"
+		"         (c) 2018-2021, CTCaer\n\n"
 		" ___________________________________________\n\n"
 		"Thanks to: %kderrek, nedwill, plutoo,\n"
 		"           shuffle2, smea, thexyz, yellows8%k\n"
@@ -1371,15 +1371,15 @@ static void _about()
 		"              Shiny Quagsire, WinterMute\n"
 		" ___________________________________________\n\n"
 		"Open source and free packages used:\n\n"
-		" - FatFs R0.13b,\n"
-		"   Copyright (c) 2018, ChaN\n\n"
-		" - bcl-1.2.0,\n"
-		"   Copyright (c) 2003-2006, Marcus Geelnard\n\n"
-		" - Atmosphere (Exo st/types, prc id patches),\n"
-		"   Copyright (c) 2018-2019, Atmosphere-NX\n\n"
-		" - elfload,\n"
-		"   Copyright (c) 2014, Owen Shepherd\n"
-		"   Copyright (c) 2018, M4xw\n"
+		" - FatFs R0.13b\n"
+		"   (c) 2018, ChaN\n\n"
+		" - bcl-1.2.0\n"
+		"   (c) 2003-2006, Marcus Geelnard\n\n"
+		" - Atmosphere (Exo st/types, prc id patches)\n"
+		"   (c) 2018-2019, Atmosphere-NX\n\n"
+		" - elfload\n"
+		"   (c) 2014, Owen Shepherd\n"
+		"   (c) 2018, M4xw\n"
 		" ___________________________________________\n\n";
 	static const char octopus[] =
 		"                         %k___\n"
@@ -1514,7 +1514,7 @@ ment_t ment_top[] = {
 	MDEF_END()
 };
 
-menu_t menu_top = { ment_top, "hekate v5.5.5", 0, 0 };
+menu_t menu_top = { ment_top, "hekate v5.5.6", 0, 0 };
 
 extern void pivot_stack(u32 stack_top);
 
@@ -1544,8 +1544,7 @@ void ipl_main()
 	h_cfg.errors |= !sd_mount() ? ERR_SD_BOOT_EN : 0;
 
 	// Save sdram lp0 config.
-	void *sdram_params =
-		hw_get_chip_id() == GP_HIDREV_MAJOR_T210 ? sdram_get_params_patched() : sdram_get_params_t210b01();
+	void *sdram_params = h_cfg.t210b01 ? sdram_get_params_t210b01() : sdram_get_params_patched();
 	if (!ianos_loader("bootloader/sys/libsys_lp0.bso", DRAM_LIB, sdram_params))
 		h_cfg.errors |= ERR_LIBSYS_LP0;
 
@@ -1564,7 +1563,7 @@ void ipl_main()
 	//display_backlight_brightness(h_cfg.backlight, 1000);
 
 	// Overclock BPMP.
-	bpmp_clk_rate_set(BPMP_CLK_DEFAULT_BOOST);
+	bpmp_clk_rate_set(h_cfg.t210b01 ? BPMP_CLK_DEFAULT_BOOST : BPMP_CLK_LOWER_BOOST);
 
 	// Check if we had a panic while in CFW.
 	secmon_exo_check_panic();
